@@ -76,7 +76,7 @@ export const WorkspaceBlock = ({
         id: uuidv4(),
         type: item.block.type,
         category: item.block.category,
-        name: ['int', 'string', 'bool'].includes(item.block.type) ? 'variable' : undefined,
+        name: ['int', 'string', 'bool'].includes(item.block.type) ? '' : undefined,
         slots: {},
         children: [],
       };
@@ -91,15 +91,123 @@ export const WorkspaceBlock = ({
 
   const hasNesting = ['if', 'while', 'for'].includes(block.type);
 
+  // Drop zone for condition slots to accept conditional blocks
+  const [{ isOverCondition }, conditionDropRef] = useDrop(() => ({
+    accept: 'block',
+    drop: (item: any, monitor) => {
+      if (monitor.didDrop()) return;
+      
+      // Only accept conditional blocks for condition slots
+      if (item.block.category === 'conditional') {
+        const newBlock: BlockInstance = {
+          id: uuidv4(),
+          type: item.block.type,
+          category: item.block.category,
+          slots: {},
+          children: [],
+        };
+        
+        onUpdate(block.id, {
+          slots: { ...block.slots, condition: newBlock }
+        });
+      }
+    },
+    canDrop: (item: any) => {
+      const slotDef = definition.slots?.find(s => s.name === 'condition');
+      return slotDef?.type === 'condition' && item.block?.category === 'conditional';
+    },
+    collect: (monitor) => ({
+      isOverCondition: monitor.isOver({ shallow: true }),
+    }),
+  }), [block.id, definition, onUpdate]);
+
   const renderSlotInput = (slotName: string) => {
-    const slotValue = block.slots?.[slotName] || '';
+    const slotValue = block.slots?.[slotName];
+    const slotDef = definition.slots?.find(s => s.name === slotName);
+    
+    // Handle condition slots - can contain BlockInstance or string
+    if (slotDef?.type === 'condition') {
+      // If slot contains a BlockInstance (conditional block), render it
+      if (slotValue && typeof slotValue === 'object' && 'type' in slotValue) {
+        const conditionalBlock = slotValue as BlockInstance;
+        return (
+          <div className="inline-flex items-center gap-1 relative group/condition">
+            <WorkspaceBlock
+              block={conditionalBlock}
+              onUpdate={(blockId, updates) => {
+                // Update the nested conditional block
+                if (blockId === conditionalBlock.id) {
+                  const updatedBlock = { ...conditionalBlock, ...updates };
+                  onUpdate(block.id, {
+                    slots: { ...block.slots, [slotName]: updatedBlock }
+                  });
+                }
+              }}
+              onDelete={() => {
+                // Remove the conditional block from the slot
+                onUpdate(block.id, {
+                  slots: { ...block.slots, [slotName]: '' }
+                });
+              }}
+              onAddChild={() => {}}
+              variables={variables}
+              depth={depth + 1}
+              index={undefined}
+            />
+          </div>
+        );
+      }
+      
+      // Otherwise, show drop zone or text input for constant
+      return (
+        <div ref={conditionDropRef} className="relative inline-block">
+          <input
+            type="text"
+            value={typeof slotValue === 'string' ? slotValue : ''}
+            onChange={(e) => {
+              onUpdate(block.id, {
+                slots: { ...block.slots, [slotName]: e.target.value }
+              });
+            }}
+            className={cn(
+              "ml-1 px-2 py-1 rounded bg-white/20 text-white border text-xs outline-none focus:ring-2 focus:ring-white/50 min-w-[80px]",
+              isOverCondition && 'ring-2 ring-white/50'
+            )}
+            placeholder="constant or drop == block"
+          />
+          {!slotValue && (
+            <div className={cn(
+              "absolute inset-0 pointer-events-none border-2 border-dashed rounded",
+              isOverCondition ? 'border-white/70 bg-white/10' : 'border-transparent'
+            )} />
+          )}
+        </div>
+      );
+    }
     
     // For variable/value slots, show input or variable selector
-    if (definition.slots?.find(s => s.name === slotName)?.type === 'value') {
+    if (slotDef?.type === 'value') {
+      // For conditional blocks, allow both variables and constants
+      if (['equals', 'not-equals', 'less-than', 'greater-than'].includes(block.type)) {
+        return (
+          <input
+            type="text"
+            value={String(slotValue || '')}
+            onChange={(e) => {
+              onUpdate(block.id, {
+                slots: { ...block.slots, [slotName]: e.target.value }
+              });
+            }}
+            className="ml-1 px-2 py-1 rounded bg-white/20 text-white border border-white/30 text-xs outline-none focus:ring-2 focus:ring-white/50"
+            placeholder={slotName}
+          />
+        );
+      }
+      
       if (variables.length > 0) {
         return (
           <select
-            value={String(slotValue)}
+            value={String(slotValue || '')}
             onChange={(e) => {
               onUpdate(block.id, {
                 slots: { ...block.slots, [slotName]: e.target.value }
@@ -119,7 +227,7 @@ export const WorkspaceBlock = ({
     return (
       <input
         type="text"
-        value={String(slotValue)}
+        value={String(slotValue || '')}
         onChange={(e) => {
           onUpdate(block.id, {
             slots: { ...block.slots, [slotName]: e.target.value }
@@ -142,34 +250,54 @@ export const WorkspaceBlock = ({
           'block-shadow',
           isOver && 'ring-2 ring-white ring-inset',
           isDraggable && 'cursor-move',
-          isDragging && 'opacity-50'
+          isDragging && 'opacity-50',
+          // Add red border for invalid variable blocks
+          ['int', 'string', 'bool'].includes(block.type) && 
+          (!block.name?.trim() || !block.slots?.value?.toString().trim()) &&
+          'ring-2 ring-red-400 ring-inset'
         )}
       >
         {/* Variable name input for variable blocks */}
-        {['int', 'string', 'bool'].includes(block.type) && (
-          <>
-            <span>{definition.label}</span>
-            <input
-              type="text"
-              value={block.name || 'variable'}
-              onChange={(e) => onUpdate(block.id, { name: e.target.value })}
-              className="px-2 py-1 rounded bg-white/20 text-white border border-white/30 text-sm outline-none focus:ring-2 focus:ring-white/50"
-              placeholder="name"
-            />
-            <span>=</span>
-            <input
-              type={block.type === 'int' ? 'number' : 'text'}
-              value={String(block.slots?.value || (block.type === 'int' ? '0' : block.type === 'bool' ? 'false' : ''))}
-              onChange={(e) => {
-                onUpdate(block.id, {
-                  slots: { ...block.slots, value: e.target.value }
-                });
-              }}
-              className="px-2 py-1 rounded bg-white/20 text-white border border-white/30 text-sm outline-none focus:ring-2 focus:ring-white/50"
-              placeholder="value"
-            />
-          </>
-        )}
+        {['int', 'string', 'bool'].includes(block.type) && (() => {
+          const name = block.name?.trim() || '';
+          const value = block.slots?.value?.toString().trim() || '';
+          const hasError = !name || !value;
+          
+          return (
+            <>
+              <span>{definition.label}</span>
+              <input
+                type="text"
+                value={block.name || ''}
+                onChange={(e) => onUpdate(block.id, { name: e.target.value })}
+                className={cn(
+                  "px-2 py-1 rounded bg-white/20 text-white border text-sm outline-none focus:ring-2",
+                  hasError && !name
+                    ? "border-red-400 focus:ring-red-400/50"
+                    : "border-white/30 focus:ring-white/50"
+                )}
+                placeholder="name"
+              />
+              <span>=</span>
+              <input
+                type={block.type === 'int' ? 'number' : 'text'}
+                value={String(block.slots?.value || '')}
+                onChange={(e) => {
+                  onUpdate(block.id, {
+                    slots: { ...block.slots, value: e.target.value }
+                  });
+                }}
+                className={cn(
+                  "px-2 py-1 rounded bg-white/20 text-white border text-sm outline-none focus:ring-2",
+                  hasError && !value
+                    ? "border-red-400 focus:ring-red-400/50"
+                    : "border-white/30 focus:ring-white/50"
+                )}
+                placeholder="value"
+              />
+            </>
+          );
+        })()}
 
         {/* Arithmetic operators */}
         {['add', 'subtract', 'multiply', 'divide'].includes(block.type) && (

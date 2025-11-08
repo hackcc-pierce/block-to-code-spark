@@ -8,6 +8,7 @@ import { CodeView } from '@/components/code/CodeView';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ControlBar } from '@/components/controls/ControlBar';
 import { generateCode } from '@/utils/codeGenerator';
+import { hasValidationErrors } from '@/utils/validation';
 import { toast } from 'sonner';
 
 const Index = () => {
@@ -21,11 +22,17 @@ const Index = () => {
     .filter(b => ['int', 'string', 'bool'].includes(b.type))
     .map(b => b.name || 'variable');
 
-  const code = generateCode(blocks, language);
+  const codeResult = generateCode(blocks, language);
 
   const handleRun = () => {
     if (blocks.length === 0) {
       toast.error('No blocks to run! Add some blocks first.');
+      return;
+    }
+    
+    // Check for validation errors
+    if (hasValidationErrors(blocks)) {
+      toast.error('Cannot run code: Some variable blocks are missing required fields (name or value).');
       return;
     }
     
@@ -84,7 +91,7 @@ const Index = () => {
           
           {/* Code View - Right */}
           <div className="w-96 flex-shrink-0 border-l border-border">
-            <CodeView code={code} language={language} />
+            <CodeView code={codeResult.code} language={language} errorLines={codeResult.errorLines} />
           </div>
         </div>
         
