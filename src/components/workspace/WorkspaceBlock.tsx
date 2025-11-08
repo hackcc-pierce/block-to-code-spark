@@ -1,4 +1,4 @@
-import { useDrop } from 'react-dnd';
+import { useDrop, useDrag } from 'react-dnd';
 import { BlockInstance } from '@/types/blocks';
 import { blockDefinitions } from '@/utils/blockDefinitions';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,11 +7,14 @@ import { cn } from '@/lib/utils';
 
 interface WorkspaceBlockProps {
   block: BlockInstance;
+  index?: number;
   onUpdate: (blockId: string, updates: Partial<BlockInstance>) => void;
   onDelete: (blockId: string) => void;
   onAddChild: (parentId: string, childBlock: BlockInstance) => void;
+  onMove?: (dragIndex: number, hoverIndex: number) => void;
   variables: string[];
   depth: number;
+  totalBlocks?: number;
 }
 
 const categoryColors: Record<string, string> = {
@@ -26,14 +29,43 @@ const categoryColors: Record<string, string> = {
 
 export const WorkspaceBlock = ({
   block,
+  index,
   onUpdate,
   onDelete,
   onAddChild,
+  onMove,
   variables,
   depth,
+  totalBlocks,
 }: WorkspaceBlockProps) => {
   const definition = blockDefinitions.find((def) => def.type === block.type);
   if (!definition) return null;
+
+  // Make blocks draggable only at top level (depth === 0)
+  const isDraggable = depth === 0 && index !== undefined && onMove !== undefined;
+
+  const [{ isDragging }, drag, preview] = useDrag(
+    () => ({
+      type: 'workspace-block',
+      item: () => ({
+        type: 'workspace-block',
+        blockInstance: block,
+        index,
+      }),
+      canDrag: () => isDraggable,
+      end: (item, monitor) => {
+        // Ensure drag ends properly
+        if (!monitor.didDrop()) {
+          // If not dropped on a valid drop target, the block stays in place
+          // This is handled by the drop handlers
+        }
+      },
+      collect: (monitor) => ({
+        isDragging: monitor.isDragging(),
+      }),
+    }),
+    [block, index, isDraggable]
+  );
 
   const [{ isOver }, dropRef] = useDrop(() => ({
     accept: 'block',
@@ -102,12 +134,15 @@ export const WorkspaceBlock = ({
   return (
     <div className={cn("relative group", depth > 0 && "ml-8")}>
       <div
+        ref={isDraggable ? drag : undefined}
         className={cn(
           'px-4 py-2.5 rounded-lg select-none transition-all duration-200 inline-flex items-center gap-2',
           categoryColors[block.category],
           'text-white font-medium text-sm',
           'block-shadow',
-          isOver && 'ring-2 ring-white ring-inset'
+          isOver && 'ring-2 ring-white ring-inset',
+          isDraggable && 'cursor-move',
+          isDragging && 'opacity-50'
         )}
       >
         {/* Variable name input for variable blocks */}
