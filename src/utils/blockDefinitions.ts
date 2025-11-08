@@ -74,6 +74,18 @@ export const blockDefinitions: BlockDefinition[] = [
     slots: [{ name: 'prompt', type: 'value' }]
   },
   
+  // Variable Assignment
+  {
+    id: 'set',
+    type: 'set',
+    category: 'variable',
+    label: 'Set variable',
+    slots: [
+      { name: 'variable', type: 'value' },
+      { name: 'value', type: 'value' }
+    ]
+  },
+  
   // Conditionals
   {
     id: 'equals',
