@@ -84,7 +84,7 @@ export const Workspace = ({ blocks, onBlocksChange, variables }: WorkspaceProps)
         id: uuidv4(),
         type: item.block.type,
         category: item.block.category,
-        name: ['int', 'string', 'bool'].includes(item.block.type) ? 'variable' : undefined,
+        name: ['int', 'string', 'bool'].includes(item.block.type) ? '' : undefined,
         slots: {},
         children: [],
       };

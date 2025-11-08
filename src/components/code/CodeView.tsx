@@ -5,9 +5,10 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 interface CodeViewProps {
   code: string;
   language: Language;
+  errorLines?: number[];
 }
 
-export const CodeView = ({ code, language }: CodeViewProps) => {
+export const CodeView = ({ code, language, errorLines = [] }: CodeViewProps) => {
   return (
     <div className="h-full flex flex-col bg-code-bg">
       <div className="px-4 py-3 border-b border-border/20 flex items-center justify-between">
@@ -17,7 +18,7 @@ export const CodeView = ({ code, language }: CodeViewProps) => {
         </div>
       </div>
       
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto relative">
         <SyntaxHighlighter
           language={language === 'cpp' ? 'cpp' : 'python'}
           style={vscDarkPlus}
@@ -32,6 +33,18 @@ export const CodeView = ({ code, language }: CodeViewProps) => {
             style: {
               fontFamily: 'JetBrains Mono, Fira Code, Consolas, monospace',
             },
+          }}
+          lineProps={(lineNumber) => {
+            const isErrorLine = errorLines.includes(lineNumber);
+            return isErrorLine ? {
+              style: {
+                display: 'block',
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                borderLeft: '4px solid rgb(239, 68, 68)',
+                paddingLeft: '0.5rem',
+                marginLeft: '-0.5rem',
+              },
+            } : {};
           }}
         >
           {code}
