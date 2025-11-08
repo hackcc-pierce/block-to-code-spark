@@ -50,9 +50,10 @@ interface WorkspaceProps {
   blocks: BlockInstance[];
   onBlocksChange: (blocks: BlockInstance[]) => void;
   variables: string[];
+  validationErrors?: Map<string, string>;
 }
 
-export const Workspace = ({ blocks, onBlocksChange, variables }: WorkspaceProps) => {
+export const Workspace = ({ blocks, onBlocksChange, variables, validationErrors }: WorkspaceProps) => {
   // Use ref to always have access to the latest blocks
   const blocksRef = useRef(blocks);
   
@@ -243,6 +244,7 @@ export const Workspace = ({ blocks, onBlocksChange, variables }: WorkspaceProps)
                   variables={variables}
                   depth={0}
                   totalBlocks={blocks.length}
+                  validationErrors={validationErrors}
                 />
               </div>
             ))}

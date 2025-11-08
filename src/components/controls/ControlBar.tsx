@@ -24,7 +24,7 @@ export const ControlBar = ({ language, onLanguageChange, onRun, onClear, isExecu
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <Code2 className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-bold text-foreground">CodeBlocks Live</h1>
+          <h1 className="text-lg font-bold text-foreground">Bubble Code</h1>
         </div>
       </div>
       

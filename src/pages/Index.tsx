@@ -8,8 +8,10 @@ import { CodeView } from '@/components/code/CodeView';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ControlBar } from '@/components/controls/ControlBar';
 import { generateCode } from '@/utils/codeGenerator';
-import { hasValidationErrors } from '@/utils/validation';
+import { hasValidationErrors, validateBlocks } from '@/utils/validation';
 import { codeExecutor } from '@/services/codeExecutor';
+import { extractInputBlocks } from '@/utils/inputExtractor';
+import { InputModal } from '@/components/modals/InputModal';
 import { toast } from 'sonner';
 
 const Index = () => {
@@ -18,6 +20,9 @@ const Index = () => {
   const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
   const [isTerminalExpanded, setIsTerminalExpanded] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isInputModalOpen, setIsInputModalOpen] = useState(false);
+  const [pendingInputs, setPendingInputs] = useState<string[]>([]);
+  const [pendingExecution, setPendingExecution] = useState<{ code: string; language: Language } | null>(null);
 
   // Extract variable names from blocks
   const variables = blocks
@@ -25,28 +30,22 @@ const Index = () => {
     .map(b => b.name || 'variable');
 
   const codeResult = generateCode(blocks, language);
+  
+  // Build validation errors map
+  const validationErrorsMap = new Map<string, string>();
+  const validationErrors = validateBlocks(blocks);
+  validationErrors.forEach(error => {
+    validationErrorsMap.set(error.blockId, error.message);
+  });
 
-  const handleRun = async () => {
-    if (blocks.length === 0) {
-      toast.error('No blocks to run! Add some blocks first.');
-      return;
-    }
-    
-    // Check for validation errors
-    if (hasValidationErrors(blocks)) {
-      toast.error('Cannot run code: Some variable blocks are missing required fields (name or value).');
-      return;
-    }
-    
+  const executeCode = async (code: string, stdin: string = '') => {
     setIsExecuting(true);
     setIsTerminalExpanded(true);
     setTerminalOutput(['🔄 Executing code...', '─'.repeat(50)]);
     
     try {
-      const { code } = generateCode(blocks, language);
-      
       // Execute the code using the code executor service
-      const result = await codeExecutor.execute(code, language);
+      const result = await codeExecutor.execute(code, language, stdin);
       
       const output: string[] = [];
       
@@ -84,14 +83,6 @@ const Index = () => {
           output.push('(Program executed successfully with no output)');
         }
         
-        // Check if code contains input statements (warning)
-        const code = generateCode(blocks, language).code;
-        const hasInput = code.includes('input()') || code.includes('cin >>');
-        if (hasInput) {
-          output.push('─'.repeat(50));
-          output.push('⚠️  Note: Input blocks require interactive execution and may not work with API-based execution.');
-        }
-        
         if (result.executionTime) {
           output.push('─'.repeat(50));
           output.push(`⏱️  Execution time: ${result.executionTime.toFixed(2)}ms`);
@@ -114,6 +105,51 @@ const Index = () => {
     } finally {
       setIsExecuting(false);
     }
+  };
+
+  const handleRun = async () => {
+    if (blocks.length === 0) {
+      toast.error('No blocks to run! Add some blocks first.');
+      return;
+    }
+    
+    // Check for validation errors
+    if (hasValidationErrors(blocks)) {
+      toast.error('Cannot run code: Some variable blocks are missing required fields (name or value).');
+      return;
+    }
+    
+    const { code } = generateCode(blocks, language);
+    
+    // Detect input blocks
+    const inputPrompts = extractInputBlocks(blocks);
+    
+    if (inputPrompts.length > 0) {
+      // Show input modal
+      setPendingInputs(inputPrompts);
+      setPendingExecution({ code, language });
+      setIsInputModalOpen(true);
+    } else {
+      // Execute directly without inputs
+      await executeCode(code);
+    }
+  };
+
+  const handleInputSubmit = async (values: string[]) => {
+    setIsInputModalOpen(false);
+    const stdin = values.join('\n');
+    
+    if (pendingExecution) {
+      await executeCode(pendingExecution.code, stdin);
+      setPendingExecution(null);
+      setPendingInputs([]);
+    }
+  };
+
+  const handleInputCancel = () => {
+    setIsInputModalOpen(false);
+    setPendingExecution(null);
+    setPendingInputs([]);
   };
   
   const handleClearTerminal = () => {
@@ -151,7 +187,7 @@ const Index = () => {
           
           {/* Workspace - Center */}
           <div className="flex-1 min-w-0">
-            <Workspace blocks={blocks} onBlocksChange={setBlocks} variables={variables} />
+            <Workspace blocks={blocks} onBlocksChange={setBlocks} variables={variables} validationErrors={validationErrorsMap} />
           </div>
           
           {/* Code View - Right */}
@@ -169,6 +205,14 @@ const Index = () => {
           isExecuting={isExecuting}
         />
       </div>
+      
+      {/* Input Modal */}
+      <InputModal
+        isOpen={isInputModalOpen}
+        inputs={pendingInputs}
+        onSubmit={handleInputSubmit}
+        onCancel={handleInputCancel}
+      />
     </DndProvider>
   );
 };

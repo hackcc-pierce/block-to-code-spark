@@ -8,120 +8,69 @@ export interface ExecutionResult {
 }
 
 export interface CodeExecutor {
-  execute(code: string, language: 'cpp' | 'python'): Promise<ExecutionResult>;
+  execute(code: string, language: 'cpp' | 'python', stdin?: string): Promise<ExecutionResult>;
 }
 
 /**
- * Piston API executor - Free, open-source code execution API
- * No API key required
- * Uses EngineMC community instance: https://emkc.org
+ * Judge0 CE API executor
+ * API endpoint: https://judge0-ce.p.rapidapi.com/submissions
+ * Language IDs: C++ (54), Python (71)
  */
-class PistonExecutor implements CodeExecutor {
-  private readonly API_URL = 'https://emkc.org/api/v2/piston/execute';
+class Judge0Executor implements CodeExecutor {
+  private readonly API_URL = 'https://judge0-ce.p.rapidapi.com/submissions';
+  private readonly API_KEY = import.meta.env.VITE_JUDGE0_API_KEY || '';
   
-  async execute(code: string, language: 'cpp' | 'python'): Promise<ExecutionResult> {
-    const languageMap = {
-      cpp: {
-        language: 'cpp',
-        version: '*',
-      },
-      python: {
-        language: 'python',
-        version: '3.10',
-      },
-    };
-
-    const lang = languageMap[language];
+  private readonly LANGUAGE_IDS = {
+    cpp: 54,
+    python: 71,
+  };
+  
+  async execute(code: string, language: 'cpp' | 'python', stdin: string = ''): Promise<ExecutionResult> {
+    const languageId = this.LANGUAGE_IDS[language];
+    
+    if (!this.API_KEY) {
+      return {
+        output: '',
+        error: 'Judge0 API key not configured. Please set VITE_JUDGE0_API_KEY environment variable.',
+        exitCode: 1,
+        isCompilationError: false,
+        isRuntimeError: false,
+      };
+    }
 
     try {
-      const response = await fetch(this.API_URL, {
+      // Step 1: Submit code
+      const submitResponse = await fetch(`${this.API_URL}?base64_encoded=false&wait=false`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-RapidAPI-Key': this.API_KEY,
+          'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com',
         },
         body: JSON.stringify({
-          language: lang.language,
-          version: lang.version,
-          files: [
-            {
-              content: code,
-            },
-          ],
-          stdin: '', // Add empty stdin field
+          source_code: code,
+          language_id: languageId,
+          stdin: stdin,
         }),
       });
 
-      // Read response body - clone response for error handling if needed
-      let responseData: any;
+      if (!submitResponse.ok) {
+        const errorData = await submitResponse.json().catch(() => ({}));
+        throw new Error(`Submission failed (${submitResponse.status}): ${errorData.message || submitResponse.statusText}`);
+      }
+
+      const submission = await submitResponse.json();
+      const token = submission.token;
+
+      if (!token) {
+        throw new Error('No token received from Judge0 API');
+      }
+
+      // Step 2: Poll for results
+      const result = await this.pollForResult(token);
       
-      if (!response.ok) {
-        // For error responses, try to get detailed error message
-        let errorMessage = response.statusText;
-        let errorDetails = '';
-        
-        // Clone response to read body without consuming it
-        const clonedResponse = response.clone();
-        try {
-          const errorData = await clonedResponse.json();
-          errorMessage = errorData.message || errorData.error || errorMessage;
-          errorDetails = errorData.details ? ` Details: ${JSON.stringify(errorData.details)}` : '';
-          if (errorData.language || errorData.version) {
-            errorDetails += ` (Language: ${errorData.language || 'unknown'}, Version: ${errorData.version || 'unknown'})`;
-          }
-        } catch (jsonError) {
-          // If not JSON, the error message is already set to statusText
-          // We can't read the body again, so just use what we have
-        }
-        
-        throw new Error(`Execution failed (${response.status}): ${errorMessage}${errorDetails}`);
-      }
-
-      // For successful responses, parse as JSON
-      responseData = await response.json();
-
-      // Piston API returns run output in data.run and compile output in data.compile
-      const stdout = responseData.run?.stdout || '';
-      const stderr = responseData.run?.stderr || '';
-      const compileError = responseData.compile?.stderr || '';
-      const exitCode = responseData.run?.code || 0;
-
-      // Determine if it's a compilation or runtime error
-      const isCompilationError = !!compileError;
-      const isRuntimeError = exitCode !== 0 && !compileError && !!stderr;
-
-      // Combine outputs - prioritize compilation errors, then runtime errors, then stdout
-      let fullOutput = '';
-      let errorMessage: string | undefined;
-
-      if (compileError) {
-        // Compilation error
-        fullOutput = compileError;
-        errorMessage = compileError;
-      } else if (stderr && exitCode !== 0) {
-        // Runtime error
-        fullOutput = stderr;
-        errorMessage = stderr;
-      } else {
-        // Normal output
-        fullOutput = stdout;
-      }
-
-      // If we have both stdout and stderr but exit code is 0, combine them
-      // (some programs write to stderr for warnings but still succeed)
-      if (stdout && stderr && exitCode === 0 && !compileError) {
-        fullOutput = `${stdout}${stderr ? '\n' + stderr : ''}`;
-      }
-
-      return {
-        output: fullOutput.trim() || (exitCode === 0 ? '(no output)' : ''),
-        error: errorMessage,
-        exitCode: compileError ? 1 : exitCode,
-        executionTime: responseData.run?.time ? parseFloat(responseData.run.time) * 1000 : undefined, // Convert to ms
-        isCompilationError,
-        isRuntimeError,
-      };
+      return this.formatResult(result);
     } catch (error) {
-      // Better error handling - check if it's a network error or API error
       if (error instanceof TypeError && error.message.includes('fetch')) {
         return {
           output: '',
@@ -141,8 +90,95 @@ class PistonExecutor implements CodeExecutor {
       };
     }
   }
+
+  private async pollForResult(token: string, maxAttempts: number = 30): Promise<any> {
+    const pollUrl = `${this.API_URL}/${token}?base64_encoded=false`;
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between polls
+      
+      const response = await fetch(pollUrl, {
+        method: 'GET',
+        headers: {
+          'X-RapidAPI-Key': this.API_KEY,
+          'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to poll result (${response.status})`);
+      }
+
+      const result = await response.json();
+      
+      // Status 1 = In Queue, Status 2 = Processing
+      // Status 3 = Accepted (completed)
+      if (result.status?.id === 3) {
+        return result;
+      }
+      
+      // Status 4-15 are various error states
+      if (result.status?.id && result.status.id >= 4) {
+        return result;
+      }
+    }
+    
+    throw new Error('Execution timeout: Result not available after maximum polling attempts');
+  }
+
+  private formatResult(result: any): ExecutionResult {
+    const statusId = result.status?.id;
+    const statusDescription = result.status?.description || 'Unknown';
+    
+    // Status IDs:
+    // 3 = Accepted (success)
+    // 4-15 = Various errors
+    const isSuccess = statusId === 3;
+    
+    // Determine error type
+    const isCompilationError = statusId === 6 || statusId === 7 || statusId === 8; // Compile Error, Runtime Error (NZEC), Runtime Error (Other)
+    const isRuntimeError = statusId === 4 || statusId === 5 || (statusId >= 9 && statusId <= 15);
+    
+    const stdout = result.stdout || '';
+    const stderr = result.stderr || '';
+    const compileOutput = result.compile_output || '';
+    const message = result.message || '';
+    
+    // Combine error messages
+    let errorMessage: string | undefined;
+    let fullOutput = '';
+    
+    if (compileOutput) {
+      errorMessage = compileOutput;
+      fullOutput = compileOutput;
+    } else if (stderr) {
+      errorMessage = stderr;
+      fullOutput = stderr;
+    } else if (message) {
+      errorMessage = message;
+      fullOutput = message;
+    } else if (!isSuccess) {
+      errorMessage = statusDescription;
+      fullOutput = statusDescription;
+    } else {
+      fullOutput = stdout;
+    }
+    
+    // If we have both stdout and stderr but it's a success, combine them
+    if (stdout && stderr && isSuccess) {
+      fullOutput = `${stdout}${stderr ? '\n' + stderr : ''}`;
+    }
+    
+    return {
+      output: fullOutput.trim() || (isSuccess ? '(no output)' : ''),
+      error: errorMessage,
+      exitCode: isSuccess ? 0 : 1,
+      executionTime: result.time ? parseFloat(result.time) * 1000 : undefined, // Convert to ms
+      isCompilationError,
+      isRuntimeError,
+    };
+  }
 }
 
-// Export the default executor (Piston API)
-export const codeExecutor: CodeExecutor = new PistonExecutor();
-
+// Export the default executor (Judge0 API)
+export const codeExecutor: CodeExecutor = new Judge0Executor();
