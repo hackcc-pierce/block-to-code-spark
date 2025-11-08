@@ -18,74 +18,75 @@ export const generateCode = (blocks: BlockInstance[], language: Language): strin
 
 const generateBlockCode = (block: BlockInstance, language: Language, indent: number = 0): string => {
   const indentation = '    '.repeat(indent);
+  const slots = block.slots || {};
   
   switch (block.type) {
     case 'int':
       return language === 'cpp' 
-        ? `${indentation}int variable = ${block.value || 0};`
-        : `${indentation}variable = ${block.value || 0}`;
+        ? `${indentation}int ${block.name || 'variable'} = ${slots.value || 0};`
+        : `${indentation}${block.name || 'variable'} = ${slots.value || 0}`;
         
     case 'string':
       return language === 'cpp'
-        ? `${indentation}string text = "${block.value || ''}";`
-        : `${indentation}text = "${block.value || ''}"`;
+        ? `${indentation}string ${block.name || 'text'} = "${slots.value || ''}";`
+        : `${indentation}${block.name || 'text'} = "${slots.value || ''}"`;
         
     case 'bool':
       return language === 'cpp'
-        ? `${indentation}bool flag = ${block.value || 'false'};`
-        : `${indentation}flag = ${block.value || 'False'}`;
+        ? `${indentation}bool ${block.name || 'flag'} = ${slots.value || 'false'};`
+        : `${indentation}${block.name || 'flag'} = ${slots.value || 'False'}`;
         
     case 'print':
       return language === 'cpp'
-        ? `${indentation}cout << ${block.value || '""'} << endl;`
-        : `${indentation}print(${block.value || '""'})`;
+        ? `${indentation}cout << ${slots.value || '""'} << endl;`
+        : `${indentation}print(${slots.value || '""'})`;
         
     case 'input':
       return language === 'cpp'
-        ? `${indentation}cin >> variable;`
-        : `${indentation}variable = input(${block.value || '""'})`;
+        ? `${indentation}cin >> ${slots.prompt || 'variable'};`
+        : `${indentation}${slots.prompt || 'variable'} = input()`;
         
     case 'if':
       const ifBody = block.children?.map(child => generateBlockCode(child, language, indent + 1)).join('\n') || '';
       return language === 'cpp'
-        ? `${indentation}if (${block.value || 'true'}) {\n${ifBody}\n${indentation}}`
-        : `${indentation}if ${block.value || 'True'}:\n${ifBody || indentation + '    pass'}`;
+        ? `${indentation}if (${slots.condition || 'true'}) {\n${ifBody || indentation + '    // empty'}\n${indentation}}`
+        : `${indentation}if ${slots.condition || 'True'}:\n${ifBody || indentation + '    pass'}`;
         
     case 'while':
       const whileBody = block.children?.map(child => generateBlockCode(child, language, indent + 1)).join('\n') || '';
       return language === 'cpp'
-        ? `${indentation}while (${block.value || 'true'}) {\n${whileBody}\n${indentation}}`
-        : `${indentation}while ${block.value || 'True'}:\n${whileBody || indentation + '    pass'}`;
+        ? `${indentation}while (${slots.condition || 'true'}) {\n${whileBody || indentation + '    // empty'}\n${indentation}}`
+        : `${indentation}while ${slots.condition || 'True'}:\n${whileBody || indentation + '    pass'}`;
         
     case 'for':
       const forBody = block.children?.map(child => generateBlockCode(child, language, indent + 1)).join('\n') || '';
       return language === 'cpp'
-        ? `${indentation}for (int i = 0; i < ${block.value || 10}; i++) {\n${forBody}\n${indentation}}`
-        : `${indentation}for i in range(${block.value || 10}):\n${forBody || indentation + '    pass'}`;
+        ? `${indentation}for (int i = 0; i < ${slots.limit || 10}; i++) {\n${forBody || indentation + '    // empty'}\n${indentation}}`
+        : `${indentation}for i in range(${slots.limit || 10}):\n${forBody || indentation + '    pass'}`;
         
     case 'add':
     case 'subtract':
     case 'multiply':
     case 'divide':
       const operators = { add: '+', subtract: '-', multiply: '*', divide: '/' };
-      return `${indentation}result = a ${operators[block.type]} b;`;
+      return `${indentation}result = ${slots.left || 'a'} ${operators[block.type]} ${slots.right || 'b'};`;
       
     case 'equals':
-      return `condition == value`;
+      return `${slots.left || 'a'} == ${slots.right || 'b'}`;
       
     case 'not-equals':
-      return `condition != value`;
+      return `${slots.left || 'a'} != ${slots.right || 'b'}`;
       
     case 'less-than':
-      return `condition < value`;
+      return `${slots.left || 'a'} < ${slots.right || 'b'}`;
       
     case 'greater-than':
-      return `condition > value`;
+      return `${slots.left || 'a'} > ${slots.right || 'b'}`;
       
     case 'comment':
       return language === 'cpp'
-        ? `${indentation}// ${block.value || 'Comment'}`
-        : `${indentation}# ${block.value || 'Comment'}`;
+        ? `${indentation}// ${slots.text || 'Comment'}`
+        : `${indentation}# ${slots.text || 'Comment'}`;
         
     default:
       return `${indentation}// Unknown block type`;
