@@ -16,6 +16,11 @@ const Index = () => {
   const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
   const [isTerminalExpanded, setIsTerminalExpanded] = useState(false);
 
+  // Extract variable names from blocks
+  const variables = blocks
+    .filter(b => ['int', 'string', 'bool'].includes(b.type))
+    .map(b => b.name || 'variable');
+
   const code = generateCode(blocks, language);
 
   const handleRun = () => {
@@ -24,18 +29,23 @@ const Index = () => {
       return;
     }
     
-    setTerminalOutput([
-      'Program execution started...',
-      '─'.repeat(40),
-      ...blocks.map(block => {
-        if (block.type === 'print') {
-          return `Output: ${block.value}`;
-        }
-        return `Executed: ${block.type}`;
-      }),
-      '─'.repeat(40),
-      'Program completed successfully ✓'
-    ]);
+    const output: string[] = ['Program execution started...', '─'.repeat(40)];
+    
+    const processBlock = (block: BlockInstance) => {
+      if (block.type === 'print') {
+        output.push(`Output: ${block.slots?.value || ''}`);
+      } else {
+        output.push(`Executed: ${block.type}`);
+      }
+      if (block.children) {
+        block.children.forEach(processBlock);
+      }
+    };
+    
+    blocks.forEach(processBlock);
+    output.push('─'.repeat(40), 'Program completed successfully ✓');
+    
+    setTerminalOutput(output);
     setIsTerminalExpanded(true);
     toast.success('Code executed successfully!');
   };
@@ -69,7 +79,7 @@ const Index = () => {
           
           {/* Workspace - Center */}
           <div className="flex-1 min-w-0">
-            <Workspace blocks={blocks} onBlocksChange={setBlocks} />
+            <Workspace blocks={blocks} onBlocksChange={setBlocks} variables={variables} />
           </div>
           
           {/* Code View - Right */}

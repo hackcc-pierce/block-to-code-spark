@@ -1,28 +1,27 @@
 import { useDrop } from 'react-dnd';
 import { BlockInstance } from '@/types/blocks';
 import { v4 as uuidv4 } from 'uuid';
-import { Block } from '../blocks/Block';
-import { blockDefinitions } from '@/utils/blockDefinitions';
+import { WorkspaceBlock } from './WorkspaceBlock';
 
 interface WorkspaceProps {
   blocks: BlockInstance[];
   onBlocksChange: (blocks: BlockInstance[]) => void;
+  variables: string[];
 }
 
-export const Workspace = ({ blocks, onBlocksChange }: WorkspaceProps) => {
+export const Workspace = ({ blocks, onBlocksChange, variables }: WorkspaceProps) => {
   const [{ isOver }, drop] = useDrop(() => ({
     accept: 'block',
     drop: (item: any, monitor) => {
-      const offset = monitor.getClientOffset();
-      if (!offset) return;
+      if (monitor.didDrop()) return; // Already handled by nested drop
 
       const newBlock: BlockInstance = {
         id: uuidv4(),
         type: item.block.type,
         category: item.block.category,
-        x: offset.x,
-        y: offset.y,
-        value: getDefaultValue(item.block.type),
+        name: ['int', 'string', 'bool'].includes(item.block.type) ? 'variable' : undefined,
+        slots: {},
+        children: [],
       };
 
       onBlocksChange([...blocks, newBlock]);
@@ -32,19 +31,49 @@ export const Workspace = ({ blocks, onBlocksChange }: WorkspaceProps) => {
     }),
   }));
 
-  const getDefaultValue = (type: string): string | number | boolean => {
-    switch (type) {
-      case 'int': return 0;
-      case 'string': return '';
-      case 'bool': return false;
-      case 'print': return '"Hello, World!"';
-      case 'input': return '"Enter value: "';
-      case 'if':
-      case 'while': return 'condition';
-      case 'for': return 10;
-      case 'comment': return 'Your comment here';
-      default: return '';
-    }
+  const updateBlock = (blockId: string, updates: Partial<BlockInstance>) => {
+    const updateBlockRecursive = (blocks: BlockInstance[]): BlockInstance[] => {
+      return blocks.map(block => {
+        if (block.id === blockId) {
+          return { ...block, ...updates };
+        }
+        if (block.children && block.children.length > 0) {
+          return { ...block, children: updateBlockRecursive(block.children) };
+        }
+        return block;
+      });
+    };
+    onBlocksChange(updateBlockRecursive(blocks));
+  };
+
+  const deleteBlock = (blockId: string) => {
+    const deleteBlockRecursive = (blocks: BlockInstance[]): BlockInstance[] => {
+      return blocks
+        .filter(block => block.id !== blockId)
+        .map(block => ({
+          ...block,
+          children: block.children ? deleteBlockRecursive(block.children) : []
+        }));
+    };
+    onBlocksChange(deleteBlockRecursive(blocks));
+  };
+
+  const addChildBlock = (parentId: string, childBlock: BlockInstance) => {
+    const addChildRecursive = (blocks: BlockInstance[]): BlockInstance[] => {
+      return blocks.map(block => {
+        if (block.id === parentId) {
+          return {
+            ...block,
+            children: [...(block.children || []), childBlock]
+          };
+        }
+        if (block.children && block.children.length > 0) {
+          return { ...block, children: addChildRecursive(block.children) };
+        }
+        return block;
+      });
+    };
+    onBlocksChange(addChildRecursive(blocks));
   };
 
   return (
@@ -67,37 +96,18 @@ export const Workspace = ({ blocks, onBlocksChange }: WorkspaceProps) => {
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            {blocks.map((block) => {
-              const definition = blockDefinitions.find((def) => def.type === block.type);
-              if (!definition) return null;
-              
-              return (
-                <div
-                  key={block.id}
-                  className="inline-block"
-                  style={{
-                    position: 'relative',
-                  }}
-                >
-                  <Block block={definition} isInPalette={false} />
-                  {block.value !== undefined && (
-                    <input
-                      type="text"
-                      value={String(block.value)}
-                      onChange={(e) => {
-                        const updatedBlocks = blocks.map((b) =>
-                          b.id === block.id ? { ...b, value: e.target.value } : b
-                        );
-                        onBlocksChange(updatedBlocks);
-                      }}
-                      className="ml-2 px-2 py-1 rounded bg-white/20 text-white border border-white/30 text-sm outline-none focus:ring-2 focus:ring-white/50"
-                      placeholder="value"
-                    />
-                  )}
-                </div>
-              );
-            })}
+          <div className="space-y-3">
+            {blocks.map((block) => (
+              <WorkspaceBlock
+                key={block.id}
+                block={block}
+                onUpdate={updateBlock}
+                onDelete={deleteBlock}
+                onAddChild={addChildBlock}
+                variables={variables}
+                depth={0}
+              />
+            ))}
           </div>
         )}
       </div>
