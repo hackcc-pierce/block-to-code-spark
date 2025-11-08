@@ -47,7 +47,12 @@ export const generateCode = (blocks: BlockInstance[], language: Language): CodeG
   
   let code: string;
   if (language === 'cpp') {
-    code = `#include <iostream>\nusing namespace std;\n\nint main() {\n${codeLines.map(line => '    ' + line).join('\n')}\n    return 0;\n}`;
+    // Check if we need string header
+    const hasStringVariable = blocks.some(block => block.type === 'string');
+    const headers = hasStringVariable 
+      ? '#include <iostream>\n#include <string>\nusing namespace std;'
+      : '#include <iostream>\nusing namespace std;';
+    code = `${headers}\n\nint main() {\n${codeLines.map(line => '    ' + line).join('\n')}\n    return 0;\n}`;
   } else {
     code = codeLines.join('\n');
   }
