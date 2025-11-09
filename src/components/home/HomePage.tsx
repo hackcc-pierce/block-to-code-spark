@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import STLViewer from '../stl/STLViewer';
 
 function HomePage() {
   const [scrollAllowed, setScrollAllowed] = useState(false);
@@ -58,11 +59,7 @@ function HomePage() {
     <div className={`bg-blue-100 transition-opacity duration-500 ${fadeOut ? 'opacity-0' : 'opacity-100'}`}>
       {/* Hero Section */}
       <div className="flex flex-col items-center justify-center h-screen p-8">
-        <img
-          src="/images/theboy.png"
-          alt="TheBoy"
-          className="w-72 md:w-96 lg:w-[30rem] mb-8"
-        />
+        <STLViewer/>
 
         <h1 className="font-momo text-4xl md:text-5xl text-center text-gray-800 mb-4">
           Learn to code by blowing bubbles!
