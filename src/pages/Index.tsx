@@ -13,6 +13,7 @@ import { codeExecutor } from '@/services/codeExecutor';
 import { extractInputBlocks } from '@/utils/inputExtractor';
 import { InputModal } from '@/components/modals/InputModal';
 import { toast } from 'sonner';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
 const Index = () => {
   const [blocks, setBlocks] = useState<BlockInstance[]>([]);
@@ -185,15 +186,16 @@ const Index = () => {
             <BlockPalette />
           </div>
           
-          {/* Workspace - Center */}
-          <div className="flex-1 min-w-0">
-            <Workspace blocks={blocks} onBlocksChange={setBlocks} variables={variables} validationErrors={validationErrorsMap} />
-          </div>
-          
-          {/* Code View - Right */}
-          <div className="w-96 flex-shrink-0 border-l border-border">
-            <CodeView code={codeResult.code} language={language} errorLines={codeResult.errorLines} />
-          </div>
+          {/* Workspace and Code View - Resizable */}
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            <ResizablePanel defaultSize={70} minSize={30} className="min-w-0">
+              <Workspace blocks={blocks} onBlocksChange={setBlocks} variables={variables} validationErrors={validationErrorsMap} />
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={30} minSize={20} className="min-w-0 border-l border-border">
+              <CodeView code={codeResult.code} language={language} errorLines={codeResult.errorLines} />
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
         
         {/* Terminal - Bottom */}

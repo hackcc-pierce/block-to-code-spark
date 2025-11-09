@@ -129,6 +129,12 @@ export const Workspace = ({ blocks, onBlocksChange, variables, validationErrors 
     const addChildRecursive = (blocks: BlockInstance[]): BlockInstance[] => {
       return blocks.map(block => {
         if (block.id === parentId) {
+          // Check if block already exists in children (prevent duplicates)
+          const existingIndex = (block.children || []).findIndex(c => c.id === childBlock.id);
+          if (existingIndex !== -1) {
+            // Block already exists, don't add duplicate
+            return block;
+          }
           return {
             ...block,
             children: [...(block.children || []), childBlock]
@@ -141,6 +147,114 @@ export const Workspace = ({ blocks, onBlocksChange, variables, validationErrors 
       });
     };
     onBlocksChange(addChildRecursive(blocksRef.current));
+  };
+
+  // Remove a block from its parent's children array (if it has a parent)
+  // or from the main workspace if it's a top-level block
+  const removeBlockFromParent = (blockId: string) => {
+    // First check if it's a top-level block in the workspace
+    const topLevelIndex = blocksRef.current.findIndex(b => b.id === blockId);
+    if (topLevelIndex !== -1) {
+      // Remove from top-level workspace
+      const newBlocks = blocksRef.current.filter(b => b.id !== blockId);
+      onBlocksChange(newBlocks);
+      return;
+    }
+    
+    // Otherwise, remove from a parent's children array
+    const removeRecursive = (blocks: BlockInstance[]): BlockInstance[] => {
+      return blocks.map(block => {
+        if (block.children && block.children.some(child => child.id === blockId)) {
+          return {
+            ...block,
+            children: block.children.filter(child => child.id !== blockId)
+          };
+        }
+        if (block.children && block.children.length > 0) {
+          return { ...block, children: removeRecursive(block.children) };
+        }
+        return block;
+      });
+    };
+    onBlocksChange(removeRecursive(blocksRef.current));
+  };
+
+  // Atomic operation: Move a block from its current location to a new parent
+  // This prevents duplication by doing both operations in a single state update
+  const moveBlockToParent = (blockId: string, newParentId: string, blockInstance: BlockInstance) => {
+    const processBlocks = (blocks: BlockInstance[]): BlockInstance[] => {
+      return blocks.map(block => {
+        const isTargetParent = block.id === newParentId;
+        const hasBlockInChildren = block.children && block.children.some(child => child.id === blockId);
+        
+        // Process children recursively first
+        let processedChildren = block.children;
+        if (block.children && block.children.length > 0) {
+          processedChildren = processBlocks(block.children);
+        }
+        
+        // If this block has the block to move in its children, remove it
+        if (hasBlockInChildren) {
+          processedChildren = (processedChildren || []).filter(child => child.id !== blockId);
+          // Don't add it back - if we just removed it, it means this block was the source parent
+          // and we're moving the block to a different parent
+        } else if (isTargetParent) {
+          // This is the target parent and block is not in its children - add it
+          const blockExists = (processedChildren || []).some(c => c.id === blockId);
+          if (!blockExists) {
+            processedChildren = [...(processedChildren || []), blockInstance];
+          }
+        }
+        
+        return {
+          ...block,
+          children: processedChildren
+        };
+      });
+    };
+    
+    // Handle top-level blocks separately
+    const currentBlocks = blocksRef.current;
+    const topLevelIndex = currentBlocks.findIndex(b => b.id === blockId);
+    
+    if (topLevelIndex !== -1) {
+      // Block is at top level - remove it and add to target parent
+      const withoutBlock = currentBlocks.filter(b => b.id !== blockId);
+      const result = processBlocks(withoutBlock);
+      
+      // Find and update the target parent in the result
+      const finalResult = result.map(block => {
+        if (block.id === newParentId) {
+          const blockExists = (block.children || []).some(c => c.id === blockId);
+          if (!blockExists) {
+            return {
+              ...block,
+              children: [...(block.children || []), blockInstance]
+            };
+          }
+        }
+        return block;
+      });
+      
+      onBlocksChange(finalResult);
+    } else {
+      // Block is nested - process recursively
+      onBlocksChange(processBlocks(currentBlocks));
+    }
+  };
+
+  // Find a block by ID in the entire tree
+  const findBlockById = (blockId: string, blocks: BlockInstance[]): BlockInstance | null => {
+    for (const block of blocks) {
+      if (block.id === blockId) {
+        return block;
+      }
+      if (block.children && block.children.length > 0) {
+        const found = findBlockById(blockId, block.children);
+        if (found) return found;
+      }
+    }
+    return null;
   };
 
   const moveBlock = useCallback((dragIndex: number, hoverIndex: number) => {
@@ -178,6 +292,39 @@ export const Workspace = ({ blocks, onBlocksChange, variables, validationErrors 
     onBlocksChange(newBlocks);
   };
 
+  // Atomic operation: Move a block from nested location to workspace at specific index
+  const moveBlockToWorkspace = (blockId: string, blockInstance: BlockInstance, targetIndex: number) => {
+    const currentBlocks = blocksRef.current;
+    
+    // First, remove the block from wherever it is (nested or top-level)
+    const removeRecursive = (blocks: BlockInstance[]): BlockInstance[] => {
+      return blocks.map(block => {
+        if (block.children && block.children.some(child => child.id === blockId)) {
+          return {
+            ...block,
+            children: block.children.filter(child => child.id !== blockId)
+          };
+        }
+        if (block.children && block.children.length > 0) {
+          return { ...block, children: removeRecursive(block.children) };
+        }
+        return block;
+      });
+    };
+    
+    // Remove from top-level if it exists there
+    let withoutBlock = currentBlocks.filter(b => b.id !== blockId);
+    
+    // Remove from nested locations
+    withoutBlock = removeRecursive(withoutBlock);
+    
+    // Now insert at target index
+    const result = [...withoutBlock];
+    result.splice(targetIndex, 0, blockInstance);
+    
+    onBlocksChange(result);
+  };
+
   return (
     <div
       ref={drop}
@@ -210,15 +357,13 @@ export const Workspace = ({ blocks, onBlocksChange, variables, validationErrors 
                       const draggedIndex = currentBlocks.findIndex(b => b.id === draggedBlock.blockInstance.id);
                       
                       if (draggedIndex !== -1) {
-                        // Only move if the position actually changes
-                        // The drop zone at 'index' means insert before the block at 'index'
-                        // So we want to move the dragged block to position 'index'
+                        // Block is in main workspace - reorder it
                         if (draggedIndex !== index) {
                           moveBlock(draggedIndex, index);
                         }
                       } else {
-                        // Block not found (shouldn't happen, but handle gracefully)
-                        insertBlockAt(draggedBlock.blockInstance, index);
+                        // Block is nested (inside a control flow block) - move it to workspace atomically
+                        moveBlockToWorkspace(draggedBlock.blockInstance.id, draggedBlock.blockInstance, index);
                       }
                     } else {
                       // New block from palette
@@ -241,6 +386,8 @@ export const Workspace = ({ blocks, onBlocksChange, variables, validationErrors 
                   onDelete={deleteBlock}
                   onAddChild={addChildBlock}
                   onMove={moveBlock}
+                  onRemoveFromParent={removeBlockFromParent}
+                  onMoveToParent={moveBlockToParent}
                   variables={variables}
                   depth={0}
                   totalBlocks={blocks.length}
@@ -255,13 +402,14 @@ export const Workspace = ({ blocks, onBlocksChange, variables, validationErrors 
                 if (draggedBlock.blockInstance) {
                   const draggedIndex = blocksRef.current.findIndex(b => b.id === draggedBlock.blockInstance.id);
                   if (draggedIndex !== -1) {
-                    // Move to the end
+                    // Block is in main workspace - move to the end
                     const targetIndex = blocksRef.current.length;
                     if (draggedIndex !== targetIndex - 1) {
                       moveBlock(draggedIndex, targetIndex);
                     }
                   } else {
-                    insertBlockAt(draggedBlock.blockInstance, blocksRef.current.length);
+                    // Block is nested (inside a control flow block) - move it to workspace atomically
+                    moveBlockToWorkspace(draggedBlock.blockInstance.id, draggedBlock.blockInstance, blocksRef.current.length);
                   }
                 } else {
                   // New block from palette
