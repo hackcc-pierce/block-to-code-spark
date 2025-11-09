@@ -4,6 +4,7 @@ import { blockDefinitions } from '@/utils/blockDefinitions';
 import { v4 as uuidv4 } from 'uuid';
 import { Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ValueSlot } from './ValueSlot';
 
 interface WorkspaceBlockProps {
   block: BlockInstance;
@@ -15,6 +16,7 @@ interface WorkspaceBlockProps {
   variables: string[];
   depth: number;
   totalBlocks?: number;
+  validationErrors?: Map<string, string>; // Map of blockId to error message
 }
 
 const categoryColors: Record<string, string> = {
@@ -37,6 +39,7 @@ export const WorkspaceBlock = ({
   variables,
   depth,
   totalBlocks,
+  validationErrors,
 }: WorkspaceBlockProps) => {
   const definition = blockDefinitions.find((def) => def.type === block.type);
   if (!definition) return null;
@@ -121,6 +124,73 @@ export const WorkspaceBlock = ({
     }),
   }), [block.id, definition, onUpdate]);
 
+
+  // Hybrid input component for arithmetic and conditional blocks
+  const renderHybridInput = (slotName: string, slotValue: any) => {
+    // Determine mode based on current value
+    const currentValue = String(slotValue || '').trim();
+    const isVariable = variables.includes(currentValue);
+    const inputMode: 'variable' | 'constant' = isVariable ? 'variable' : 'constant';
+    
+    return (
+      <div className="inline-flex items-center gap-1">
+        <select
+          value={inputMode}
+          onChange={(e) => {
+            const newMode = e.target.value as 'variable' | 'constant';
+            if (newMode === 'variable' && variables.length > 0) {
+              // Switch to variable mode - set to first variable if current value is not a variable
+              if (!variables.includes(currentValue)) {
+                onUpdate(block.id, {
+                  slots: { ...block.slots, [slotName]: variables[0] }
+                });
+              }
+            } else {
+              // Switch to constant mode - clear if current value is a variable
+              if (variables.includes(currentValue)) {
+                onUpdate(block.id, {
+                  slots: { ...block.slots, [slotName]: '' }
+                });
+              }
+            }
+          }}
+          className="px-1 py-0.5 rounded bg-white/30 text-white border border-white/40 text-xs outline-none focus:ring-1 focus:ring-white/50"
+        >
+          <option value="variable">Var</option>
+          <option value="constant">Const</option>
+        </select>
+        {inputMode === 'variable' && variables.length > 0 ? (
+          <select
+            value={currentValue}
+            onChange={(e) => {
+              onUpdate(block.id, {
+                slots: { ...block.slots, [slotName]: e.target.value }
+              });
+            }}
+            className="ml-1 px-2 py-1 rounded bg-white/20 text-white border border-white/30 text-xs outline-none focus:ring-2 focus:ring-white/50"
+          >
+            <option value="">--select--</option>
+            {variables.map(v => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={currentValue}
+            onChange={(e) => {
+              onUpdate(block.id, {
+                slots: { ...block.slots, [slotName]: e.target.value }
+              });
+            }}
+            className="ml-1 px-2 py-1 rounded bg-white/20 text-white border border-white/30 text-xs outline-none focus:ring-2 focus:ring-white/50"
+            placeholder="value"
+          />
+        )}
+      </div>
+    );
+  };
+
   const renderSlotInput = (slotName: string) => {
     const slotValue = block.slots?.[slotName];
     const slotDef = definition.slots?.find(s => s.name === slotName);
@@ -153,6 +223,7 @@ export const WorkspaceBlock = ({
               variables={variables}
               depth={depth + 1}
               index={undefined}
+              validationErrors={validationErrors}
             />
           </div>
         );
@@ -187,8 +258,41 @@ export const WorkspaceBlock = ({
     
     // For variable/value slots, show input or variable selector
     if (slotDef?.type === 'value') {
-      // For conditional blocks, allow both variables and constants
-      if (['equals', 'not-equals', 'less-than', 'greater-than'].includes(block.type)) {
+      // For arithmetic and conditional blocks, use hybrid input (no drop zone needed)
+      if (['add', 'subtract', 'multiply', 'divide', 'equals', 'not-equals', 'less-than', 'greater-than'].includes(block.type)) {
+        return renderHybridInput(slotName, slotValue);
+      }
+      
+      // For variable blocks (int, string, bool), allow arithmetic blocks in value slot
+      if (['int', 'string', 'bool'].includes(block.type) && slotName === 'value') {
+        return (
+          <ValueSlot
+            slotName={slotName}
+            slotValue={slotValue}
+            block={block}
+            onUpdate={onUpdate}
+            variables={variables}
+            depth={depth}
+            validationErrors={validationErrors}
+            renderInput={() => (
+              <input
+                type={block.type === 'int' ? 'number' : 'text'}
+                value={String(slotValue || '')}
+                onChange={(e) => {
+                  onUpdate(block.id, {
+                    slots: { ...block.slots, [slotName]: e.target.value }
+                  });
+                }}
+                className="ml-1 px-2 py-1 rounded bg-white/20 text-white border border-white/30 text-xs outline-none focus:ring-2 focus:ring-white/50 min-w-[80px]"
+                placeholder="value or drop + block"
+              />
+            )}
+          />
+        );
+      }
+      
+      // For comment blocks, always use free text input
+      if (block.type === 'comment') {
         return (
           <input
             type="text"
@@ -199,9 +303,44 @@ export const WorkspaceBlock = ({
               });
             }}
             className="ml-1 px-2 py-1 rounded bg-white/20 text-white border border-white/30 text-xs outline-none focus:ring-2 focus:ring-white/50"
-            placeholder={slotName}
+            placeholder="Enter comment text"
           />
         );
+      }
+      
+      // For set block, variable slot should be dropdown, value slot should be hybrid
+      if (block.type === 'set') {
+        if (slotName === 'variable') {
+          return (
+            <select
+              value={String(slotValue || '')}
+              onChange={(e) => {
+                onUpdate(block.id, {
+                  slots: { ...block.slots, [slotName]: e.target.value }
+                });
+              }}
+              className="ml-1 px-2 py-1 rounded bg-white/20 text-white border border-white/30 text-xs outline-none focus:ring-2 focus:ring-white/50"
+            >
+              <option value="">--select variable--</option>
+              {variables.map(v => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+          );
+        } else if (slotName === 'value') {
+          return (
+            <ValueSlot
+              slotName={slotName}
+              slotValue={slotValue}
+              block={block}
+              onUpdate={onUpdate}
+              variables={variables}
+              depth={depth}
+              validationErrors={validationErrors}
+              renderInput={() => renderHybridInput(slotName, slotValue)}
+            />
+          );
+        }
       }
       
       if (variables.length > 0) {
@@ -254,6 +393,9 @@ export const WorkspaceBlock = ({
           // Add red border for invalid variable blocks
           ['int', 'string', 'bool'].includes(block.type) && 
           (!block.name?.trim() || !block.slots?.value?.toString().trim()) &&
+          'ring-2 ring-red-400 ring-inset',
+          // Add red border for validation errors
+          validationErrors?.has(block.id) &&
           'ring-2 ring-red-400 ring-inset'
         )}
       >
@@ -311,9 +453,27 @@ export const WorkspaceBlock = ({
         {/* Conditional operators */}
         {['equals', 'not-equals', 'less-than', 'greater-than'].includes(block.type) && (
           <>
-            {renderSlotInput('left')}
+            <ValueSlot
+              slotName="left"
+              slotValue={block.slots?.left}
+              block={block}
+              onUpdate={onUpdate}
+              variables={variables}
+              depth={depth}
+              validationErrors={validationErrors}
+              renderInput={() => renderHybridInput('left', block.slots?.left)}
+            />
             <span>{definition.label}</span>
-            {renderSlotInput('right')}
+            <ValueSlot
+              slotName="right"
+              slotValue={block.slots?.right}
+              block={block}
+              onUpdate={onUpdate}
+              variables={variables}
+              depth={depth}
+              validationErrors={validationErrors}
+              renderInput={() => renderHybridInput('right', block.slots?.right)}
+            />
           </>
         )}
 
@@ -335,7 +495,16 @@ export const WorkspaceBlock = ({
         {block.type === 'for' && (
           <>
             <span>for i = 0 to</span>
-            {renderSlotInput('limit')}
+            <ValueSlot
+              slotName="limit"
+              slotValue={block.slots?.limit}
+              block={block}
+              onUpdate={onUpdate}
+              variables={variables}
+              depth={depth}
+              validationErrors={validationErrors}
+              renderInput={() => renderSlotInput('limit')}
+            />
           </>
         )}
 
@@ -343,7 +512,16 @@ export const WorkspaceBlock = ({
         {block.type === 'print' && (
           <>
             <span>{definition.label}</span>
-            {renderSlotInput('value')}
+            <ValueSlot
+              slotName="value"
+              slotValue={block.slots?.value}
+              block={block}
+              onUpdate={onUpdate}
+              variables={variables}
+              depth={depth}
+              validationErrors={validationErrors}
+              renderInput={() => renderHybridInput('value', block.slots?.value)}
+            />
           </>
         )}
 
@@ -351,6 +529,16 @@ export const WorkspaceBlock = ({
           <>
             <span>{definition.label}</span>
             {renderSlotInput('prompt')}
+          </>
+        )}
+
+        {/* Set/Assignment block */}
+        {block.type === 'set' && (
+          <>
+            <span>Set</span>
+            {renderSlotInput('variable')}
+            <span>to</span>
+            {renderSlotInput('value')}
           </>
         )}
 

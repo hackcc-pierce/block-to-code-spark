@@ -17,6 +17,7 @@ export type BlockType =
   | 'for'
   | 'print'
   | 'input'
+  | 'set'
   | 'add'
   | 'subtract'
   | 'multiply'
@@ -26,6 +27,8 @@ export type BlockType =
   | 'less-than'
   | 'greater-than'
   | 'comment';
+
+export type VariableType = 'int' | 'string' | 'bool' | 'unknown';
 
 export interface BlockDefinition {
   id: string;

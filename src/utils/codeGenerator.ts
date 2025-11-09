@@ -1,5 +1,5 @@
 import { BlockInstance, Language } from '@/types/blocks';
-import { validateBlock } from './validation';
+import { validateBlocks } from './validation';
 
 export interface CodeGenerationResult {
   code: string;
@@ -17,20 +17,15 @@ export const generateCode = (blocks: BlockInstance[], language: Language): CodeG
   }
   
   // First pass: validate blocks and collect error block indices
-  const errorBlockIndices = new Set<number>();
-  blocks.forEach((block, index) => {
-    const error = validateBlock(block);
-    if (error) {
-      errorBlockIndices.add(index);
-    }
-  });
+  const validationErrors = validateBlocks(blocks);
+  const errorBlockIds = new Set(validationErrors.map(e => e.blockId));
   
   // Second pass: generate code and track line numbers
   const codeLines: string[] = [];
   let currentLineNumber = language === 'cpp' ? 6 : 1; // C++ starts at line 6 (after header), Python at line 1
   
   blocks.forEach((block, index) => {
-    const hasError = errorBlockIndices.has(index);
+    const hasError = errorBlockIds.has(block.id);
     const blockCode = generateBlockCode(block, language, 0, hasError);
     
     if (hasError) {
@@ -78,9 +73,12 @@ const generateBlockCode = (block: BlockInstance, language: Language, indent: num
           ? `${indentation}// ${errorMsg}`
           : `${indentation}# ${errorMsg}`;
       }
+      const intValue = typeof slots.value === 'object' && 'type' in slots.value
+        ? generateBlockCode(slots.value as BlockInstance, language, 0)
+        : (slots.value || 0);
       return language === 'cpp' 
-        ? `${indentation}int ${block.name || 'variable'} = ${slots.value || 0};`
-        : `${indentation}${block.name || 'variable'} = ${slots.value || 0}`;
+        ? `${indentation}int ${block.name || 'variable'} = ${intValue};`
+        : `${indentation}${block.name || 'variable'} = ${intValue}`;
         
     case 'string':
       if (hasError) {
@@ -95,9 +93,12 @@ const generateBlockCode = (block: BlockInstance, language: Language, indent: num
           ? `${indentation}// ${errorMsg}`
           : `${indentation}# ${errorMsg}`;
       }
+      const stringValue = typeof slots.value === 'object' && 'type' in slots.value
+        ? generateBlockCode(slots.value as BlockInstance, language, 0)
+        : (slots.value || '');
       return language === 'cpp'
-        ? `${indentation}string ${block.name || 'text'} = "${slots.value || ''}";`
-        : `${indentation}${block.name || 'text'} = "${slots.value || ''}"`;
+        ? `${indentation}string ${block.name || 'text'} = "${stringValue}";`
+        : `${indentation}${block.name || 'text'} = "${stringValue}"`;
         
     case 'bool':
       if (hasError) {
@@ -112,19 +113,34 @@ const generateBlockCode = (block: BlockInstance, language: Language, indent: num
           ? `${indentation}// ${errorMsg}`
           : `${indentation}# ${errorMsg}`;
       }
+      const boolValue = typeof slots.value === 'object' && 'type' in slots.value
+        ? generateBlockCode(slots.value as BlockInstance, language, 0)
+        : (slots.value || 'false');
       return language === 'cpp'
-        ? `${indentation}bool ${block.name || 'flag'} = ${slots.value || 'false'};`
-        : `${indentation}${block.name || 'flag'} = ${slots.value || 'False'}`;
+        ? `${indentation}bool ${block.name || 'flag'} = ${boolValue};`
+        : `${indentation}${block.name || 'flag'} = ${boolValue}`;
         
     case 'print':
+      const printValue = typeof slots.value === 'object' && 'type' in slots.value
+        ? generateBlockCode(slots.value as BlockInstance, language, 0)
+        : (slots.value || '""');
       return language === 'cpp'
-        ? `${indentation}cout << ${slots.value || '""'} << endl;`
-        : `${indentation}print(${slots.value || '""'})`;
+        ? `${indentation}cout << ${printValue} << endl;`
+        : `${indentation}print(${printValue})`;
         
     case 'input':
       return language === 'cpp'
         ? `${indentation}cin >> ${slots.prompt || 'variable'};`
         : `${indentation}${slots.prompt || 'variable'} = input()`;
+        
+    case 'set':
+      const varName = slots.variable || 'variable';
+      const setValue = typeof slots.value === 'object' && 'type' in slots.value
+        ? generateBlockCode(slots.value as BlockInstance, language, 0)
+        : (slots.value || '0');
+      return language === 'cpp'
+        ? `${indentation}${varName} = ${setValue};`
+        : `${indentation}${varName} = ${setValue}`;
         
     case 'if':
       const ifBody = block.children?.map(child => generateBlockCode(child, language, indent + 1)).join('\n') || '';
@@ -146,28 +162,61 @@ const generateBlockCode = (block: BlockInstance, language: Language, indent: num
         
     case 'for':
       const forBody = block.children?.map(child => generateBlockCode(child, language, indent + 1)).join('\n') || '';
+      const forLimit = typeof slots.limit === 'object' && 'type' in slots.limit
+        ? generateBlockCode(slots.limit as BlockInstance, language, 0)
+        : (slots.limit || 10);
       return language === 'cpp'
-        ? `${indentation}for (int i = 0; i < ${slots.limit || 10}; i++) {\n${forBody || indentation + '    // empty'}\n${indentation}}`
-        : `${indentation}for i in range(${slots.limit || 10}):\n${forBody || indentation + '    pass'}`;
+        ? `${indentation}for (int i = 0; i < ${forLimit}; i++) {\n${forBody || indentation + '    // empty'}\n${indentation}}`
+        : `${indentation}for i in range(${forLimit}):\n${forBody || indentation + '    pass'}`;
         
     case 'add':
     case 'subtract':
     case 'multiply':
     case 'divide':
       const operators = { add: '+', subtract: '-', multiply: '*', divide: '/' };
-      return `${indentation}result = ${slots.left || 'a'} ${operators[block.type]} ${slots.right || 'b'};`;
+      const leftOperand = typeof slots.left === 'object' && 'type' in slots.left
+        ? generateBlockCode(slots.left as BlockInstance, language, 0)
+        : (slots.left || 'a');
+      const rightOperand = typeof slots.right === 'object' && 'type' in slots.right
+        ? generateBlockCode(slots.right as BlockInstance, language, 0)
+        : (slots.right || 'b');
+      return `${indentation}${leftOperand} ${operators[block.type]} ${rightOperand};`;
       
     case 'equals':
-      return `${slots.left || 'a'} == ${slots.right || 'b'}`;
+      const eqLeft = typeof slots.left === 'object' && 'type' in slots.left
+        ? generateBlockCode(slots.left as BlockInstance, language, 0)
+        : (slots.left || 'a');
+      const eqRight = typeof slots.right === 'object' && 'type' in slots.right
+        ? generateBlockCode(slots.right as BlockInstance, language, 0)
+        : (slots.right || 'b');
+      return `${eqLeft} == ${eqRight}`;
       
     case 'not-equals':
-      return `${slots.left || 'a'} != ${slots.right || 'b'}`;
+      const neLeft = typeof slots.left === 'object' && 'type' in slots.left
+        ? generateBlockCode(slots.left as BlockInstance, language, 0)
+        : (slots.left || 'a');
+      const neRight = typeof slots.right === 'object' && 'type' in slots.right
+        ? generateBlockCode(slots.right as BlockInstance, language, 0)
+        : (slots.right || 'b');
+      return `${neLeft} != ${neRight}`;
       
     case 'less-than':
-      return `${slots.left || 'a'} < ${slots.right || 'b'}`;
+      const ltLeft = typeof slots.left === 'object' && 'type' in slots.left
+        ? generateBlockCode(slots.left as BlockInstance, language, 0)
+        : (slots.left || 'a');
+      const ltRight = typeof slots.right === 'object' && 'type' in slots.right
+        ? generateBlockCode(slots.right as BlockInstance, language, 0)
+        : (slots.right || 'b');
+      return `${ltLeft} < ${ltRight}`;
       
     case 'greater-than':
-      return `${slots.left || 'a'} > ${slots.right || 'b'}`;
+      const gtLeft = typeof slots.left === 'object' && 'type' in slots.left
+        ? generateBlockCode(slots.left as BlockInstance, language, 0)
+        : (slots.left || 'a');
+      const gtRight = typeof slots.right === 'object' && 'type' in slots.right
+        ? generateBlockCode(slots.right as BlockInstance, language, 0)
+        : (slots.right || 'b');
+      return `${gtLeft} > ${gtRight}`;
       
     case 'comment':
       return language === 'cpp'
