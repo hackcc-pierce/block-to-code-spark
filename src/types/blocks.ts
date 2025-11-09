@@ -17,6 +17,7 @@ export type BlockType =
   | 'for'
   | 'print'
   | 'input'
+  | 'set'
   | 'add'
   | 'subtract'
   | 'multiply'
@@ -26,6 +27,8 @@ export type BlockType =
   | 'less-than'
   | 'greater-than'
   | 'comment';
+
+export type VariableType = 'int' | 'string' | 'bool' | 'unknown';
 
 export interface BlockDefinition {
   id: string;
@@ -43,11 +46,12 @@ export interface BlockInstance {
   id: string;
   type: BlockType;
   category: BlockCategory;
-  x: number;
-  y: number;
-  children?: BlockInstance[];
-  value?: string | number | boolean;
+  name?: string; // For variables: the variable name
+  slots?: { [key: string]: SlotValue }; // Values for each slot
+  children?: BlockInstance[]; // Nested blocks (for control structures)
   parent?: string;
 }
+
+export type SlotValue = string | BlockInstance;
 
 export type Language = 'cpp' | 'python';

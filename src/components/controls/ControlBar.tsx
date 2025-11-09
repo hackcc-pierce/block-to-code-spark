@@ -1,6 +1,7 @@
 import { Language } from '@/types/blocks';
 import { Button } from '@/components/ui/button';
 import { Play, Trash2, Code2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   Select,
   SelectContent,
@@ -14,20 +15,25 @@ interface ControlBarProps {
   onLanguageChange: (lang: Language) => void;
   onRun: () => void;
   onClear: () => void;
+  isExecuting?: boolean;
 }
 
-export const ControlBar = ({ language, onLanguageChange, onRun, onClear }: ControlBarProps) => {
+export const ControlBar = ({ language, onLanguageChange, onRun, onClear, isExecuting = false }: ControlBarProps) => {
   return (
     <div className="h-14 border-b border-border bg-card px-4 flex items-center justify-between">
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <Code2 className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-bold text-foreground">CodeBlocks Live</h1>
+          <h1 className="text-lg font-bold text-foreground">Bubble Code</h1>
         </div>
       </div>
       
       <div className="flex items-center gap-3">
-        <Select value={language} onValueChange={(val) => onLanguageChange(val as Language)}>
+        <Select 
+          value={language} 
+          onValueChange={(val) => onLanguageChange(val as Language)}
+          disabled={isExecuting}
+        >
           <SelectTrigger className="w-32">
             <SelectValue />
           </SelectTrigger>
@@ -42,6 +48,7 @@ export const ControlBar = ({ language, onLanguageChange, onRun, onClear }: Contr
           size="sm"
           onClick={onClear}
           className="gap-2"
+          disabled={isExecuting}
         >
           <Trash2 className="w-4 h-4" />
           Clear
@@ -50,10 +57,11 @@ export const ControlBar = ({ language, onLanguageChange, onRun, onClear }: Contr
         <Button
           size="sm"
           onClick={onRun}
-          className="gap-2 bg-accent hover:bg-accent/90"
+          disabled={isExecuting}
+          className="gap-2 bg-accent hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Play className="w-4 h-4" />
-          Run
+          <Play className={cn("w-4 h-4", isExecuting && "animate-pulse")} />
+          {isExecuting ? 'Running...' : 'Run'}
         </Button>
       </div>
     </div>

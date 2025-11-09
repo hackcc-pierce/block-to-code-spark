@@ -8,6 +8,10 @@ import { CodeView } from '@/components/code/CodeView';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ControlBar } from '@/components/controls/ControlBar';
 import { generateCode } from '@/utils/codeGenerator';
+import { hasValidationErrors, validateBlocks } from '@/utils/validation';
+import { codeExecutor } from '@/services/codeExecutor';
+import { extractInputBlocks } from '@/utils/inputExtractor';
+import { InputModal } from '@/components/modals/InputModal';
 import { toast } from 'sonner';
 
 const Index = () => {
@@ -15,29 +19,142 @@ const Index = () => {
   const [language, setLanguage] = useState<Language>('cpp');
   const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
   const [isTerminalExpanded, setIsTerminalExpanded] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [isInputModalOpen, setIsInputModalOpen] = useState(false);
+  const [pendingInputs, setPendingInputs] = useState<string[]>([]);
+  const [pendingExecution, setPendingExecution] = useState<{ code: string; language: Language } | null>(null);
 
-  const code = generateCode(blocks, language);
+  // Extract variable names from blocks
+  const variables = blocks
+    .filter(b => ['int', 'string', 'bool'].includes(b.type))
+    .map(b => b.name || 'variable');
 
-  const handleRun = () => {
+  const codeResult = generateCode(blocks, language);
+  
+  // Build validation errors map
+  const validationErrorsMap = new Map<string, string>();
+  const validationErrors = validateBlocks(blocks);
+  validationErrors.forEach(error => {
+    validationErrorsMap.set(error.blockId, error.message);
+  });
+
+  const executeCode = async (code: string, stdin: string = '') => {
+    setIsExecuting(true);
+    setIsTerminalExpanded(true);
+    setTerminalOutput(['🔄 Executing code...', '─'.repeat(50)]);
+    
+    try {
+      // Execute the code using the code executor service
+      const result = await codeExecutor.execute(code, language, stdin);
+      
+      const output: string[] = [];
+      
+      if (result.isCompilationError) {
+        // Compilation error
+        output.push('❌ Compilation Error', '─'.repeat(50));
+        const errorLines = result.error ? result.error.split('\n') : ['Unknown compilation error'];
+        output.push(...errorLines);
+        output.push('─'.repeat(50));
+        toast.error('Compilation failed');
+      } else if (result.isRuntimeError || result.exitCode !== 0) {
+        // Runtime error
+        output.push('❌ Runtime Error', '─'.repeat(50));
+        const errorLines = result.error ? result.error.split('\n') : ['Unknown runtime error'];
+        output.push(...errorLines);
+        if (result.output) {
+          output.push('─'.repeat(50), 'Output before error:');
+          output.push(...result.output.split('\n'));
+        }
+        output.push('─'.repeat(50));
+        toast.error('Runtime error occurred');
+      } else {
+        // Success
+        output.push('✅ Execution successful', '─'.repeat(50));
+        
+        // Split output into lines
+        if (result.output && result.output !== '(no output)') {
+          const outputLines = result.output.split('\n').filter(line => line.trim() !== '');
+          if (outputLines.length > 0) {
+            output.push(...outputLines);
+          } else {
+            output.push('(Program executed successfully with no output)');
+          }
+        } else {
+          output.push('(Program executed successfully with no output)');
+        }
+        
+        if (result.executionTime) {
+          output.push('─'.repeat(50));
+          output.push(`⏱️  Execution time: ${result.executionTime.toFixed(2)}ms`);
+        }
+        
+        toast.success('Code executed successfully!');
+      }
+      
+      setTerminalOutput(output);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setTerminalOutput([
+        '❌ Execution Error',
+        '─'.repeat(50),
+        errorMessage,
+        '─'.repeat(50),
+        'Please check your code and try again.',
+      ]);
+      toast.error('Failed to execute code');
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleRun = async () => {
     if (blocks.length === 0) {
       toast.error('No blocks to run! Add some blocks first.');
       return;
     }
     
-    setTerminalOutput([
-      'Program execution started...',
-      '─'.repeat(40),
-      ...blocks.map(block => {
-        if (block.type === 'print') {
-          return `Output: ${block.value}`;
-        }
-        return `Executed: ${block.type}`;
-      }),
-      '─'.repeat(40),
-      'Program completed successfully ✓'
-    ]);
-    setIsTerminalExpanded(true);
-    toast.success('Code executed successfully!');
+    // Check for validation errors
+    if (hasValidationErrors(blocks)) {
+      toast.error('Cannot run code: Some variable blocks are missing required fields (name or value).');
+      return;
+    }
+    
+    const { code } = generateCode(blocks, language);
+    
+    // Detect input blocks
+    const inputPrompts = extractInputBlocks(blocks);
+    
+    if (inputPrompts.length > 0) {
+      // Show input modal
+      setPendingInputs(inputPrompts);
+      setPendingExecution({ code, language });
+      setIsInputModalOpen(true);
+    } else {
+      // Execute directly without inputs
+      await executeCode(code);
+    }
+  };
+
+  const handleInputSubmit = async (values: string[]) => {
+    setIsInputModalOpen(false);
+    const stdin = values.join('\n');
+    
+    if (pendingExecution) {
+      await executeCode(pendingExecution.code, stdin);
+      setPendingExecution(null);
+      setPendingInputs([]);
+    }
+  };
+
+  const handleInputCancel = () => {
+    setIsInputModalOpen(false);
+    setPendingExecution(null);
+    setPendingInputs([]);
+  };
+  
+  const handleClearTerminal = () => {
+    setTerminalOutput([]);
+    toast.info('Terminal cleared');
   };
 
   const handleClear = () => {
@@ -59,6 +176,7 @@ const Index = () => {
           onLanguageChange={handleLanguageChange}
           onRun={handleRun}
           onClear={handleClear}
+          isExecuting={isExecuting}
         />
         
         <div className="flex-1 flex overflow-hidden">
@@ -69,12 +187,12 @@ const Index = () => {
           
           {/* Workspace - Center */}
           <div className="flex-1 min-w-0">
-            <Workspace blocks={blocks} onBlocksChange={setBlocks} />
+            <Workspace blocks={blocks} onBlocksChange={setBlocks} variables={variables} validationErrors={validationErrorsMap} />
           </div>
           
           {/* Code View - Right */}
           <div className="w-96 flex-shrink-0 border-l border-border">
-            <CodeView code={code} language={language} />
+            <CodeView code={codeResult.code} language={language} errorLines={codeResult.errorLines} />
           </div>
         </div>
         
@@ -83,8 +201,18 @@ const Index = () => {
           output={terminalOutput}
           isExpanded={isTerminalExpanded}
           onToggle={() => setIsTerminalExpanded(!isTerminalExpanded)}
+          onClear={handleClearTerminal}
+          isExecuting={isExecuting}
         />
       </div>
+      
+      {/* Input Modal */}
+      <InputModal
+        isOpen={isInputModalOpen}
+        inputs={pendingInputs}
+        onSubmit={handleInputSubmit}
+        onCancel={handleInputCancel}
+      />
     </DndProvider>
   );
 };
