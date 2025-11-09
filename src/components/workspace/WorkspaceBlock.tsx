@@ -13,6 +13,8 @@ interface WorkspaceBlockProps {
   onDelete: (blockId: string) => void;
   onAddChild: (parentId: string, childBlock: BlockInstance) => void;
   onMove?: (dragIndex: number, hoverIndex: number) => void;
+  onRemoveFromParent?: (blockId: string) => void;
+  onMoveToParent?: (blockId: string, newParentId: string, blockInstance: BlockInstance) => void;
   variables: string[];
   depth: number;
   totalBlocks?: number;
@@ -36,6 +38,8 @@ export const WorkspaceBlock = ({
   onDelete,
   onAddChild,
   onMove,
+  onRemoveFromParent,
+  onMoveToParent,
   variables,
   depth,
   totalBlocks,
@@ -44,8 +48,8 @@ export const WorkspaceBlock = ({
   const definition = blockDefinitions.find((def) => def.type === block.type);
   if (!definition) return null;
 
-  // Make blocks draggable only at top level (depth === 0)
-  const isDraggable = depth === 0 && index !== undefined && onMove !== undefined;
+  // Make blocks draggable (both top-level and nested blocks can be dragged)
+  const isDraggable = true;
 
   const [{ isDragging }, drag, preview] = useDrag(
     () => ({
@@ -70,11 +74,42 @@ export const WorkspaceBlock = ({
     [block, index, isDraggable]
   );
 
+  // Helper function to check if a block is a descendant of another block
+  const isDescendant = (ancestorId: string, blockToCheck: BlockInstance): boolean => {
+    if (blockToCheck.id === ancestorId) return true;
+    if (blockToCheck.children) {
+      return blockToCheck.children.some(child => isDescendant(ancestorId, child));
+    }
+    return false;
+  };
+
   const [{ isOver }, dropRef] = useDrop(() => ({
-    accept: 'block',
+    accept: ['block', 'workspace-block'],
     drop: (item: any, monitor) => {
       if (monitor.didDrop()) return;
 
+      // If it's an existing workspace block being moved
+      if (item.type === 'workspace-block' && item.blockInstance) {
+        // Don't allow dropping a block into itself
+        if (item.blockInstance.id === block.id) return;
+        
+        // Don't allow dropping a block into its own children (prevent circular references)
+        if (isDescendant(item.blockInstance.id, block)) return;
+        
+        // Use atomic move operation to prevent duplication
+        if (onMoveToParent) {
+          onMoveToParent(item.blockInstance.id, block.id, item.blockInstance);
+        } else {
+          // Fallback to separate operations if moveToParent not available
+          if (onRemoveFromParent) {
+            onRemoveFromParent(item.blockInstance.id);
+          }
+          onAddChild(block.id, item.blockInstance);
+        }
+        return;
+      }
+
+      // New block from palette
       const newBlock: BlockInstance = {
         id: uuidv4(),
         type: item.block.type,
@@ -571,15 +606,19 @@ export const WorkspaceBlock = ({
         >
           {block.children && block.children.length > 0 ? (
             <div className="space-y-2 py-2">
-              {block.children.map((child) => (
+              {block.children.map((child, childIndex) => (
                 <WorkspaceBlock
                   key={child.id}
                   block={child}
+                  index={childIndex}
                   onUpdate={onUpdate}
                   onDelete={onDelete}
                   onAddChild={onAddChild}
+                  onRemoveFromParent={onRemoveFromParent}
+                  onMoveToParent={onMoveToParent}
                   variables={variables}
                   depth={depth + 1}
+                  validationErrors={validationErrors}
                 />
               ))}
             </div>
