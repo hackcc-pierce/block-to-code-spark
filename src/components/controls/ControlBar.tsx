@@ -21,12 +21,14 @@ interface ControlBarProps {
 export const ControlBar = ({ language, onLanguageChange, onRun, onClear, isExecuting = false }: ControlBarProps) => {
   return (
     <div className="h-14 border-b border-border bg-card px-4 flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <Code2 className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-bold text-foreground">Bubble Code</h1>
+      <a href="/">
+        <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+            <Code2 className="w-5 h-5 text-primary" />
+            <h1 className="text-lg font-bold text-foreground">BubbleCode</h1>
+          </div>
         </div>
-      </div>
+      </a>
       
       <div className="flex items-center gap-3">
         <Select 

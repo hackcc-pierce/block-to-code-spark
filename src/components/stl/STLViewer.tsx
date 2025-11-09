@@ -153,7 +153,6 @@ export default function STLViewer(): JSX.Element {
           fontSize: "14px",
           fontFamily: "sans-serif"
         }}>
-          Loading model...
         </div>
       </div>
     </ErrorBoundary>
