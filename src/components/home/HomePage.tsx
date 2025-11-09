@@ -115,12 +115,17 @@ function HomePage() {
         {/* Centered Description */}
         <div className="flex items-center justify-center h-[80vh]">
           <p className="font-momo ax-w-2xl text-lg leading-relaxed text-center text-xl px-40">
-            Inspired by the elegant block coding of Scratch, we developed BubbleCode as a way to bridge the gap between conceptual logic and actual, functional code!
+            Inspired by the simple and elegant block coding of&nbsp;
+             <img src="/images/scratch.png" alt="coding" className="inline-block w-24 align-middle relative -top-1"/>
+            &nbsp;we developed BubbleCode as a way to bridge the gap between conceptual logic and actual, functional code!<br />
+            With BubbleCode, you can learn the fundamentals of coding by breaking it down into easy-to-digest bubbles, which are converted into any of multiple programming languages!<br />
+            You can even test your new skills by taking on built-in programming challenges, ranging from completing tasks to reverse-engineering real code!
           </p>
         </div>
 
         {/* Bottom Credits */}
-        <footer className="font-bungee absolute bottom-4 left-1/2 transform -translate-x-1/2 text-sm text-gray-500 text-center text-xl">
+        <footer className="font-bungee absolute bottom-8 left-1/2 transform -translate-x-1/2 text-sm text-gray-500 text-center text-xl">
+            <img src="/images/theboy.png" alt="coding" className="inline-block w-24 align-middle relative -top-1"/><br />
             Developers<br />
             Lexington Carey&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Hasti Salsali<br />
             Alex Harwig&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Angel De Leon
