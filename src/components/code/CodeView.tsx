@@ -24,7 +24,7 @@ export const CodeView = ({ code, language, errorLines = [] }: CodeViewProps) => 
           </TabsList>
         </div>
         
-        <TabsContent value="problems" className="flex-1 m-0 mt-0 overflow-hidden data-[state=active]:flex">
+        <TabsContent value="problems" className="flex-1 m-0 mt-0 data-[state=active]:flex">
           <ProblemsView />
         </TabsContent>
 
