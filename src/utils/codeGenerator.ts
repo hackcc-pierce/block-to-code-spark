@@ -181,8 +181,10 @@ const generateBlockCode = (block: BlockInstance, language: Language, indent: num
         ? generateBlockCode(slots.right as BlockInstance, language, 0, false, true)
         : (slots.right || 'b');
       // Only add semicolon if not nested (i.e., when used as a standalone statement)
-      const semicolon = isNested ? '' : ';';
-      return `${indentation}${leftOperand} ${operators[block.type]} ${rightOperand}${semicolon}`;
+      const semicolon = isNested ? '' : ';'
+      const returnValue = slots.left && slots.right ? `${indentation}${leftOperand} ${operators[block.type]} ${rightOperand}${semicolon}` 
+      : `${(language === 'cpp'? '/*' : '#' )} ERROR: Missing operand ${language === 'cpp'? '*/': '' }`;
+      return returnValue;
       
     case 'equals':
       const eqLeft = typeof slots.left === 'object' && 'type' in slots.left
@@ -191,6 +193,7 @@ const generateBlockCode = (block: BlockInstance, language: Language, indent: num
       const eqRight = typeof slots.right === 'object' && 'type' in slots.right
         ? generateBlockCode(slots.right as BlockInstance, language, 0, false, true)
         : (slots.right || 'b');
+        
       return `${eqLeft} == ${eqRight}`;
       
     case 'not-equals':
