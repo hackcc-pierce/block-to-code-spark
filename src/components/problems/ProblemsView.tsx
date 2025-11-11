@@ -27,16 +27,16 @@ export const ProblemsView = () => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-code-bg">
+    <div className="h-full w-full flex flex-col bg-code-bg">
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top sidebar - Problems list */}
-        <div className="w-ful border-r border-border/20 bg-muted/30 overflow-auto flex-shrink-0">
+        <div className="w-ful border-r border-border/20 overflow-auto flex-shrink-0">
           <div className="p-2 space-y-1">
             {/* Word Problems Section */}
             <div>
               <button
                 onClick={() => toggleSection('word')}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted rounded-md transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white hover:text-foreground hover:bg-muted rounded-md transition-colors"
               >
                 {expandedSections.has('word') ? (
                   <ChevronDown className="w-4 h-4" />
@@ -52,7 +52,7 @@ export const ProblemsView = () => {
                       key={problem.id}
                       onClick={() => handleProblemClick('word', problem.id)}
                       className={cn(
-                        "w-full flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors",
+                        "w-full flex items-center gap-2 px-3 py-1.5 text-sm text-white hover:text-foreground hover:bg-muted rounded-md transition-colors",
                         selectedProblem?.type === 'word' && selectedProblem?.id === problem.id && "bg-muted text-foreground"
                       )}
                     >
@@ -68,7 +68,7 @@ export const ProblemsView = () => {
             <div>
               <button
                 onClick={() => toggleSection('code')}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted rounded-md transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 hover:text-foreground text-sm font-semibold text-white hover:bg-muted rounded-md transition-colors"
               >
                 {expandedSections.has('code') ? (
                   <ChevronDown className="w-4 h-4" />
@@ -84,7 +84,7 @@ export const ProblemsView = () => {
                       key={problem.id}
                       onClick={() => handleProblemClick('code', problem.id)}
                       className={cn(
-                        "w-full flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors",
+                        "w-full flex items-center gap-2 px-3 py-1.5 text-sm text-white hover:text-foreground hover:bg-muted rounded-md transition-colors",
                         selectedProblem?.type === 'code' && selectedProblem?.id === problem.id && "bg-muted text-foreground"
                       )}
                     >
@@ -111,7 +111,7 @@ export const ProblemsView = () => {
               />
             )
           ) : (
-            <div className="h-full flex items-center justify-center text-muted-foreground">
+            <div className="h-full flex items-center justify-center text-white">
               <p>Select a problem from the list to view it</p>
             </div>
           )}
