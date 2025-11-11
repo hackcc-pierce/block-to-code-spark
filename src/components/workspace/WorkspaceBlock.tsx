@@ -600,8 +600,8 @@ export const WorkspaceBlock = ({
         <div
           ref={dropRef}
           className={cn(
-            'ml-4 mt-2 pl-4 border-l-2 border-white/30 min-h-[40px]',
-            isOver && 'border-white bg-white/5 rounded'
+            'ml-4 mt-2 pl-4 border-l-2 border-block-control min-h-[40px]',
+            isOver && 'border-orange-300 bg-white/5 rounded'
           )}
         >
           {block.children && block.children.length > 0 ? (
@@ -623,7 +623,7 @@ export const WorkspaceBlock = ({
               ))}
             </div>
           ) : (
-            <div className="text-white/40 text-xs py-2 italic">
+            <div className="text-block-control text-xs py-2 italic">
               Drop blocks here
             </div>
           )}
